@@ -1,114 +1,108 @@
-#include <iostream>
-#include <cmath>
-#include <vector>
+#include <iostream> // std::cout
+#include <vector> // std::vector
+#include <cmath> // pow(x,y)
+
 #include <fstream>
 #include <sstream>
 
-#include <unordered_map>
-
 #include "basic_socket.h"
 
-char version[2] = {0,1};
+char version[2] = {0,2};
 
-struct PageInfo
+struct Page
 {
-	char size; // Data will be pow(2,size) bytes
-	std::string path,opTypes;
+	char size;
 	std::string pageByte;
-
-	char getSize() { for(int i = 0;i<255;i++) if(pow(2,i)>pageByte.size()) return i; return '?';}
-	PageInfo(std::string path, std::string opTypes = "")
+	std::string work(std::vector<int>,std::vector<char>)
 	{
-
+		return pageByte; // Will define a language for programming
+				 // pages.
+	}
+	char getSize() { for(int i = 0;i<255;i++) if(pow(2,i)>pageByte.size()) return i; return '?'; }
+	Page(std::string path)
+	{
 		std::ifstream PageText; PageText.open(path);
 		std::stringstream PageStream; PageStream << PageText.rdbuf(); PageText.close();
 		pageByte = PageStream.str();
 		size = getSize();
-		this->opTypes = opTypes;
-
-		std::cout << path << " readed for Ops:" << opTypes <<  ":" << std::endl << pageByte << std::endl;
+		std::cout << path << std::endl << pageByte << std::endl;
 	}
 };
 
-std::vector<PageInfo> Pages;
-#define MAINPAGE 0
-#define ERRORPAGE 1
-
-int getPage(int p1, int p2, int p3)
+class PageManager
 {
-	return MAINPAGE;
-}
+	private:
+		std::vector<Page>* pages;
+		int CPage;
+	public:
+		PageManager(std::vector<Page>* pages) : pages(pages)
+		{
 
-int readInt(int socket)
-{
-	char* integerVal = (char*)calloc(sizeof(char), 4);
-	ISocketSv::Read(socket, integerVal, 4);
-	return *(int*)(integerVal);
-}
+		}
 
-char readChar(int socket)
-{
-	char charVal = 0;
-	ISocketSv::Read(socket, &charVal, 1);
-	return charVal;
-}
+		char readChar(int socket)
+		{
+			char charVal = 0; ISocketSv::Read(socket,&charVal,1); return charVal;
+		}
+		int readInt(int socket)
+		{
+			char* integerVal = (char*)calloc(sizeof(char),4);
+			ISocketSv::Read(socket,integerVal,4);
+			return *(int*)(integerVal);
+		}
 
+		Page &operator[](int i){ if(i<0) return pages[0][1]; else return pages[0][i]; }
+		int GetPage(char* directory)
+		{
+			return directory[2];
+		}
+		char* optVRead(char* optV)//reads optV and returns preweb
+		{
+			char* preweb = (char*)calloc(sizeof(char),2);
+			if(optV[0] != version[0] || optV[1] != version[1]) {preweb[0] = 1; return preweb;}
+			int page = CPage = GetPage((preweb+2)); if(page<0) {preweb[0]=2;return preweb;}
+			preweb[1] = pages[0][page].size;
+			return preweb;
+		}
+		std::string optsRead(int socket) //reads opts and returns page
+		{
+			std::vector<char> param;
+			char *size;
+			if(!ISocketSv::Read(socket,size,1)) return nullptr;
+			for(int i = 0;i<(int)size[0];i++)
+			{
+				char *val; if(!ISocketSv::Read(socket,val,1)) return nullptr;
+				param.push_back(*val);
+			}
+			std::vector<int> integers; std::vector<char> characters;
+			for(int i = 0;i<(int)size[0];i++)
+			{
+				if(param[i]=='i') integers.push_back(readInt(socket));
+				else if(param[i] == 'c') integers.push_back(readChar(socket));
+			}
+			return pages[0][CPage].work(integers,characters);
+		}
+
+};
+
+std::vector<Page> pages;
 bool handler(int socket)
 {
-	std::cout << "Connected socket:" << socket << "." << std::endl;
-
+	PageManager PM(&pages);
 	char optV[5];
-	if(!ISocketSv::Read(socket, optV, 5)) return false; // Getting optV data
-	std::cout << "Version:" << (int)optV[0] << ":" << (int)optV[1] 
-		<< "(should be " << (int)version[0] << ":" << (int)version[1] << ")" << std::endl;
-
-	std::cout << "Directory:" << (int)optV[2] << ":" << (int)optV[3] << ":" << (int)optV[4] << std::endl;
-	
-	char preweb[2] = {0,0}; // Sending preweb data
-	
-	int page = getPage((int)optV[2], (int)optV[3],(int)optV[4]); preweb[1] = Pages[page].size;
-	if(optV[0] != version[0] || optV[1] != version[1]) { preweb[0] = page = ERRORPAGE; }
-
-	std::cout << "Sending preweb:" << (int)preweb[0] << ":" << (int)preweb[1] << std::endl;
-	if(!ISocketSv::Send(socket, preweb, 2)) return false; 
-	if(preweb[0] != 0) return false; // Stop Veepre if a error corrupted.
-
-	char complete = 0;
-	if(!ISocketSv::Read(socket, &complete, 1)) return false; // Reading complete data
-	
-	char opTypeSize = Pages[page].opTypes.size();
-	std::cout << "Sending Op Size:" << (int)opTypeSize 
-		<< " and type:"<<Pages[page].opTypes<<"."<< std::endl;
-	if(!ISocketSv::Send(socket, &opTypeSize,1)) return false; // Sending OpSize
-	if((int)opTypeSize > 0) 
-	{
-		if(!ISocketSv::Send(socket, (char*)Pages[page].opTypes.c_str(), (int)opTypeSize )) return false; // Sending OpTypes
-		std::cout << "Readed Opts:" ;
-		for(int i = 0 ;i<(int)opTypeSize;i++)
-		{
-			if(Pages[page].opTypes[i]=='c') std::cout << readChar(socket);//reading char
-			else if(Pages[page].opTypes[i]=='i') std::cout << readInt(socket); //reading integer
-		}
-	} std::cout << std::endl << (int)opTypeSize << " op reading ended." << std::endl;
-
-	if(complete == (char)0) // If complete equals to 0, that is successfull
-	{
-		ISocketSv::Send(socket, (char*)Pages[page].pageByte.c_str(),pow(2,Pages[page].size));
-		std::cout << "Sending PageId:" << page << "." << std::endl;
-	}
-	std::cout << "Communication end for socket " << socket << "." << std::endl << std::endl;
-
+	if(!ISocketSv::Read(socket,optV,5)) return false;
+	char* preweb = PM.optVRead(optV);
+	if(!ISocketSv::Send(socket,preweb,2)) return false;
+	std::string page = PM.optsRead(socket);
+	if(!ISocketSv::Send(socket,(char*)page.c_str(),preweb[1])) return false;
 	return false;
+
 }
 
 int main(int argc, char *argv[])
 {
-	Pages.push_back(PageInfo("index", "ccccccc")); // MainPage
-	Pages.push_back(PageInfo("error", "")); // ErrorPage
-	Pages.push_back(PageInfo("info", "")); // 2 
+	pages.push_back(Page("index.vbnt"));
 
-	ISocketSv server(SOCK_STREAM, 4545, 5);
+	ISocketSv server(SOCK_STREAM,4545,5);
 	server.Begin(handler);
-
-	return 0;
 }
