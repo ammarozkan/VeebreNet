@@ -1,9 +1,7 @@
 #include <iostream>
-#include <cstring>
 #include <cmath>
-#include "basic_socket.h"
 
-#define PROT_OPT(v1, v2, d1, d2, d3) {(char)v1, (char)v2, (char)d1, (char)d2, (char)d3}
+#include "basic_socket.h"
 
 void sendInt(ISocketCl *client, int val)
 {
@@ -16,61 +14,63 @@ void sendChar(ISocketCl *client, char val)
 	client->Send(&val,1);
 }
 
+char version[2] = {0,2};
+
 int main(int argc, char *argv[])
 {
-	char ip[16]; // Answer from DNS Server
-	int dir[3] = {0,0,0};
-	std::string servername = "veepreweb";
-	if(argc>4) for(int i = 0;i<3;i++) dir[i] = atoi(argv[i+2]);
+	char ip[16];
+	std::string servername = "veepreweb", nameserver = "192.168.88.128", nameserver_port = "8000"; int dir[3] = {0,0,0};
+	std::vector<int> intOpts; std::vector<char> charOpts; std::string opts;
+	for (int i = 1;i<argc;i++)
 	{
+		if(argv[i] == "--name" && i+1 < argc) servername = argv[++i];
+		else if(argv[i] == "--dir" && i+3 < argc) for (int j = 0;j<3;j++) dir[j] = atoi(argv[++i]);
+		else if(argv[i] == "--nameserver" && i+1 < argc) nameserver = argv[++i];
+		else if(argv[i] == "--nameserverport" && i+1 < argc) nameserver_port = argv[++i];
+		else if(argv[i] == "--opts" && i+1 < argc)
+		{
+			opts = argv[++i];
+			if(i+opts.size()<argc) for(int j = 1;j<opts.size();j++) 
+			{
+				if(opts[j]=='c') charOpts.push_back(argv[++i][0]);
+				else if(opts[j] == 'i') intOpts.push_back( atoi(argv[++i]) );
+				else SOCKETERRORCOM("What th' f is "<<opts[j]<<" parameter type?",return 1);
+			}
+		}
+	}
+	{ // Nameserver Connection
 		ISocketCl client(SOCK_STREAM);
-		client.Connect("192.168.88.128",8000); //Connecting to Name Server with 8000 port
-						       //
-		if(argc>1) servername = argv[1]; // if entered a server name, program will search entered name (like basic_browser sitedomain)
-					  // else program will search veepreweb
-
-		client.Send((char*)servername.c_str(),servername.size()); // Client will send the domain
-		
-		client.Read(ip, 16); // reading answer
-		
+		if( !client.Connect(nameserver,std::stoi(nameserver_port)) ) SOCKETERRORCOM("Unable to connect nameserver.",return -1);
+		if( !client.Send((char*)servername.c_str(),servername.size()) ) SOCKETERRORCOM("Unable to send server's name to nameserver.",return -2);
+		if( !client.Read(ip, 16) ) SOCKETERRORCOM("Unable to read ip address from nameserver.",return -3);
 		client.Close();
 	}
-	
 	std::cout << "Answer From Name Server:" << ip << std::endl;
-	if(std::string(ip)!="") // if IP is filled with data
+	if(std::string(ip)!="")
 	{
-		std::cout << "Trying to reach website (" << servername << ":" << ip << ")." << std::endl;
+		char optV[5] = {version[0],version[1],(char)dir[0],(char)dir[1],(char)dir[2]};
 		ISocketCl websiteClient(SOCK_STREAM);
-		websiteClient.Connect(ip,4545); // Connecting website with port 4545
-
-		char optV[5] = PROT_OPT(0, 1, dir[0], dir[1], dir[2]);
-		websiteClient.Send(optV,5);
-
+		if(!websiteClient.Connect(ip,4545)) SOCKETERRORCOM("Website connection failed.",return -4);
+		if(!websiteClient.Send(optV,5)) SOCKETERRORCOM("optV sending failed.",return -5);
+		
 		char *preWeb = (char*)calloc(sizeof(char),2);
-		websiteClient.Read(preWeb,2);
-		std::cout << "PreWeb:" << preWeb[0] << " " << preWeb[1] << std::endl;
-
-		if(preWeb[0]==0)
+		if(!websiteClient.Read(preWeb,2)) SOCKETERRORCOM("preWeb reading failed.",return -6);
+		std::cout << "PreWeb:" << (int)preWeb[0] << " " << (int)preWeb[1] << std::endl;
+		if(preWeb[0]!=0) SOCKETERRORCOM("Server error,"<<preWeb[0]<<", received from preWeb.", return -7);
+		
+		//Parameter sent
+		char optSize = (char)opts.size();
+		if(!websiteClient.Send(&optSize,1)) SOCKETERRORCOM("Option size sending failed.",return -8);
+		if(!websiteClient.Send((char*)opts.c_str(),opts.size())) SOCKETERRORCOM("Option type sending failed.",return -9);
+		for(int counter = 0,in=0,ch=0;counter<opts.size();counter++)
 		{
-			char complete = 0;
-			websiteClient.Send(&complete, 1);
-			char opSize = 0;
-			websiteClient.Read(&opSize,1);
-			char *opTypes = (char*)calloc(sizeof(char), (int)opSize);
-			websiteClient.Read(opTypes, (int)opSize);
-			std::cout << opTypes << std::endl;
-			for(int i = 0;i<strlen(opTypes);i++)
-			{
-				if(opTypes[i]=='i') sendInt(&websiteClient, 0);
-				else if(opTypes[i]=='c') sendChar(&websiteClient, '0');
-			}
-			std::cout << strlen(opTypes) << " ops sended." << std::endl;
+			if(opts[counter]=='c') sendChar(&websiteClient,charOpts[ch++]);
+			else if(opts[counter]=='i') sendInt(&websiteClient,intOpts[in++]);
+		}
+		char *page = (char*)calloc(sizeof(char),pow(2,(int)preWeb[1]));
+		if(!websiteClient.Read(page,pow(2,(int)preWeb[1]))) SOCKETERRORCOM("Page reading failed.",return -10);
+		std::cout << "Domain<"<< servername <<">["<< dir[0] << "," << dir[1] << "," << dir[2] << "]" << std::endl;
+		std::cout << page << std::endl;
 
-			char *web = (char*)calloc(pow(2,(int)preWeb[1]), sizeof(char));
-			websiteClient.Read(web, pow(2,(int)preWeb[1]));
-			std::cout << "domain<" << servername << ">" << std::endl;
-			std::cout << web << std::endl;
-		} else std::cout << "VeebreWeb Error:" << (int)preWeb[0] << std::endl;
 	}
-	return 0;
 }
