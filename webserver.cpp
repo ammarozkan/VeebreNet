@@ -94,7 +94,7 @@ bool handler(int socket)
 	char* preweb = PM.optVRead(optV);
 	if(!ISocketSv::Send(socket,preweb,2)) return false;
 	std::string page = PM.optsRead(socket);
-	if(!ISocketSv::Send(socket,(char*)page.c_str(),preweb[1])) return false;
+	if(!ISocketSv::Send(socket,(char*)page.c_str(),pow(2,preweb[1]) )) return false;
 	return false;
 
 }
