@@ -67,7 +67,7 @@ class PageManager
 		std::string optsRead(int socket) //reads opts and returns page
 		{
 			std::vector<char> param;
-			char *size;
+			char *size = calloc(sizeof(char),1);
 			if(!ISocketSv::Read(socket,size,1)) return nullptr;
 			for(int i = 0;i<(int)size[0];i++)
 			{
