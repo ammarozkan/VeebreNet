@@ -1,6 +1,13 @@
 # VeebreNet
 Brand new network and website system for terminal. So yes, you are looking to a stupid re-invented internet. Damn.
 
+### About Domain Name System
+
+There is a basic DNS system. But this is very, very basic.
+
+- Client connects to DNS Server with TCP/IP socket and sends domain name to server.
+- Server reads domain name, and sends IP address that found from DNSBase.ddb file as string.
+
 ### About system:
 
 If a browser(any VeebreNet client) wants to connect to an VeebreNet server, client does these in order:
