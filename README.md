@@ -18,6 +18,7 @@ If a browser(any VeebreNet client) wants to connect to an VeebreNet server, clie
     - 2: directory not found.
   - Second byte will represent size as 2 power of *size*. So if client gets 5 as size, client will read 32 (2 power of 5) bytes.
 - Client reads *preWeb* and if ```preWeb[0]``` is 0, clients sends *optSize*. That will represent option count that will be sended to server. Otherwise the connection cuts off and thrown into the ocean.
+  - **optSize** : represents options's size for next operations.
 - And then, client sends *optType* as option's types as 1 byte for 1 type to server (like ``{'c','i','i','i'}``). Represented chars for variable types is listed below:
   - **optType** : {type1,type2,.....,typen}
   - 'c' = Character Type (1 byte)
